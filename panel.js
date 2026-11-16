@@ -39,7 +39,7 @@ if (isStandalone) {
         }
         const sheetId = sheet.id;
         const sheetName = sheet.name;
-        sheet.onChanged.add((event) => showChange(event, sheetId));
+        sheet.onChanged.add((event) => showChange(event, sheetId, sheetName));
         await context.sync();
         statusMessage.textContent = sheetName + " izleniyor.";
       });
@@ -49,17 +49,18 @@ if (isStandalone) {
   });
 }
 
-async function showChange(event, sheetId) {
+async function showChange(event, sheetId, sheetName) {
   if (event.source !== Excel.EventSource.local || event.changeType !== Excel.DataChangeType.rangeEdited) return;
 
-  const cell = event.address.split("!").pop().replaceAll("$", "");
-  const column = /^([A-Z]+)[1-9]\d*$/.exec(cell)?.[1];
-  const label = Object.hasOwn(dateColumns, column) ? dateColumns[column] : "";
-  if (!label) return;
+  const address = event.address.split("!").pop().replaceAll("$", "").toUpperCase();
+  const match = /^(([PRUXZ])[1-9]\d*)(?::\1)?$/.exec(address);
+  if (!match) return;
+  const [, cell, column] = match;
+  const label = dateColumns[column];
 
   try {
     const detail = event.details;
-    if (!detail || detail.valueBefore === detail.valueAfter) return;
+    if (detail && detail.valueBefore === detail.valueAfter) return;
 
     await Excel.run(async (context) => {
       const range = context.workbook.worksheets.getItem(sheetId).getRange(cell);
@@ -67,16 +68,37 @@ async function showChange(event, sheetId) {
       await context.sync();
       const value = range.values[0][0];
       const displayed = range.text[0][0];
-      const showsDate = /^\s*\d{1,4}([./-])\d{1,2}\1\d{1,4}(?:[ T]|$)/.test(displayed);
-      if (value !== detail.valueAfter || typeof value !== "number" || value <= 0 || !showsDate) {
+      if (value === "") return;
+
+      const dateText = typeof value === "string" ? validTextDate(value) : "";
+      const numericDate = typeof value === "number" && Number.isFinite(value) && value > 0 &&
+        /^\s*\d{1,4}([./-])\d{1,2}\1\d{1,4}(?:[\sT]|$)/.test(displayed);
+      if (!dateText && !numericDate) {
+        statusMessage.textContent = cell + " değişti. Tarihi GG.AA.YYYY SS:DD biçiminde gir.";
         return;
       }
+      statusMessage.textContent = sheetName + " izleniyor. Tarih yakalandı.";
       const item = document.createElement("li");
-      item.textContent = cell + " · " + label + " · " + displayed;
+      item.textContent = cell + " · " + label + " · " + (dateText || displayed);
       entries.prepend(item);
       if (entries.children.length > 15) entries.lastElementChild.remove();
     });
   } catch (error) {
     statusMessage.textContent = "Hücre okunamadı: " + (error.code || error.message);
   }
+}
+
+function validTextDate(value) {
+  const text = value.trim();
+  const dayFirst = /^(\d{1,2})([./-])(\d{1,2})\2(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(text);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(text);
+  const parts = dayFirst
+    ? [dayFirst[4], dayFirst[3], dayFirst[1], ...dayFirst.slice(5)]
+    : iso?.slice(1);
+  if (!parts) return "";
+
+  const [year, month, day, hour, minute, second] = parts.map((part) => Number(part ?? 0));
+  if (year < 1900 || month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) return "";
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day >= 1 && day <= daysInMonth ? text : "";
 }
