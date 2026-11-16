@@ -78,6 +78,11 @@ function applyCommentMerges(source, start, end, preview, transfer, clearedCells)
     if (!modes.some(mode => modeRows.get(mode)?.has(row) || candidates.some(member => modeRows.get(mode)?.has(member.row)))) continue;
     relevant.add(row);
     for (const member of candidates) relevant.add(member.row);
+    const sourceRow = identities.get(row);
+    if (sourceRow) {
+      const sameSource = duplicates.get(commentKey(sourceRow.shipment + sourceRow.file)) || [];
+      for (const member of sameSource) relevant.add(member.row);
+    }
   }
   const data = new Map ();
   for (const rows of nearby(relevant.values())) {
@@ -135,11 +140,19 @@ function applyCommentMerges(source, start, end, preview, transfer, clearedCells)
         continue;
       }
       const sameSource = duplicates.get(commentKey(sourceRow.shipment + sourceRow.file)) || [];
+      const sourceFile = sourceFileKey(sourceRow);
+      const sourcePieces = readPieces(data.get(row)?.values[0]);
+      const sourceDay = (sourceDate || dateFor(target.row)).slice(0, 10);
       const sourceClashes = sameSource.filter(member => member.row !== row && member.row !== target.row &&
-        !candidates.some(candidate => candidate.row === member.row));
-      const sameFile = commentKey(sourceRow.shipment + sourceRow.file) === commentKey(target.shipment + target.file);
-      if ((sourceClashes.length || sameFile) && !isInspection(sourceRow.note)) {
-        const message = "Birleşimin kaynak satırı Excel’de tekrarlı. Manuel kontrol gerekli.";
+        !candidates.some(candidate => candidate.row === member.row) &&
+        sourceFileKey(member) === sourceFile && dateFor(member.row).slice(0, 10) === sourceDay &&
+        readPieces(data.get(member.row)?.values[0]) === sourcePieces);
+      const sameFile = commentKey(sourceRow.shipment) === commentKey(target.shipment) &&
+        sourceFile === sourceFileKey(target);
+      if (sourceClashes.length || (sameFile && !isInspection(sourceRow.note))) {
+        const otherRows = sourceClashes.length ? sourceClashes : [target];
+        const addresses = otherRows.map(member => MODE_SETTINGS[mode].column + member.row).join(", ");
+        const message = `Birleşimin kaynak satırı Excel’de tekrarlı (${addresses}). Manuel kontrol gerekli.`;
         for (const member of [sourceRow, target, ...sourceClashes]) mark(member.row, message);
         continue;
       }
@@ -285,6 +298,13 @@ function indexMember(index, key, member) {
 function fileRefKey(value) {
   return value.normalize("NFKC").trim().toLocaleLowerCase("tr-TR").replace(/\s+/g, " ")
     .replace(/\s*[-–—]\s*/g, "-").replace(/-denet[ıi]m$/, "-denetim").replace(/-k[ıi]myahane$/, "-kimyahane");
+}
+
+function sourceFileKey(member) {
+  const suffix = isInspection(member.note) ? "-DENETİM" : isChemical(member.note) ? "-Kimyahane" : "";
+  const file = fileRefKey(member.file).replace(/[ -](?:trans[iı]t|tranz[iı]t)$/, " transit");
+  const category = fileRefKey(suffix);
+  return category && !file.endsWith(category) ? file + category : file;
 }
 
 function isInspection(value) {
