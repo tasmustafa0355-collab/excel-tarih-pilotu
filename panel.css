@@ -1,0 +1,22 @@
+:root {
+  font: 16px/1.5 system-ui, sans-serif;
+  color: #16283c;
+  background: #f4f7fa;
+}
+main {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+h1 { font-size: 1.25rem; }
+#status { font-weight: 600; }
+ul { padding-left: 1.2rem; }
+li { margin-block: .35rem; }
+button {
+  border: 0;
+  border-radius: .4rem;
+  padding: .55rem .8rem;
+  color: white;
+  background: #176246;
+  cursor: pointer;
+}
