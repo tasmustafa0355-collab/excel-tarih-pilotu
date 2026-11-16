@@ -2,7 +2,7 @@
 
 const columnModes = Object.fromEntries(Object.entries(MODE_SETTINGS).map(([mode, settings]) => [settings.column, mode]));
 
-async function prepareExcelBatch(sheetId, cells, clearedCells = []) {
+async function prepareExcelBatch(sheetId, cells, clearedCells = [], discardedCells = []) {
   return Excel.run(async (context) => {
     const sheet = context.workbook.worksheets.getItem(sheetId);
     const selected = cells.map((cell) => ({cell, row:Number(cell.slice(1)), mode:columnModes[cell[0]]}));
@@ -40,7 +40,7 @@ async function prepareExcelBatch(sheetId, cells, clearedCells = []) {
       preview.push([`${MODE_SETTINGS[mode].label} / ${cell}`, shipment, file, note, pieces, displayDate(date),
         canTransfer ? "" : "Sevkiyat, dosya adı veya K sütunu adedi eksik."]);
     }
-    if (!preview.length) return {rows:[], reasons, missing};
+    if (!preview.length) return {rows:[], reasons, missing, preview};
 
     // Read the location of comments first. Only B-column comment contents affect shipment merges.
     const locations = comments.items.map((comment) => ({comment, range:comment.getLocation().load(["columnIndex", "rowIndex"])}));
@@ -79,10 +79,24 @@ async function prepareExcelBatch(sheetId, cells, clearedCells = []) {
       output = applyCommentMerges(source, dates[0], dates.at(-1), preview, transfer, excluded);
     }
 
+    const discarded = new Set(discardedCells);
+    output = output.filter((row) => {
+      if (!row.mergeMembers) return true;
+      const {column, label} = MODE_SETTINGS[row.mode];
+      const removed = row.mergeMembers.filter((member) => discarded.has(column + member.row));
+      if (!removed.length) return true;
+      const removedLabels = removed.map((member) => column + member.row).join(", ");
+      for (const member of row.mergeMembers) {
+        const line = preview.find((item) => item[0] === `${label} / ${column}${member.row}`);
+        if (line) line[6] = `Birleşim bekliyor: ${removedLabels} gönderim listesinden çıkarıldı.`;
+      }
+      return false;
+    });
+
     for (const [label, , , , , , reason] of preview) {
       if (reason && !reason.startsWith("Birleşim →")) reasons.push(label + " · " + reason);
     }
-    return {rows:output, reasons, missing};
+    return {rows:output, reasons, missing, preview};
   });
 }
 

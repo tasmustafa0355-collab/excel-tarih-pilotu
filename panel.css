@@ -25,4 +25,8 @@ h2 { font-size: 1rem; }
 #preview { background: #245d82; }
 button:disabled { opacity: .5; cursor: default; }
 #events { max-height: 16rem; overflow: auto; }
+#events li { display: flex; align-items: start; justify-content: space-between; gap: .5rem; }
+#events small { display: block; color: #36526a; }
+#events .remove-entry { flex: none; padding: .2rem .5rem; background: #e4edf4; color: #16283c; }
+#events .remove-entry:hover:enabled { background: #f3dddd; }
 #report { margin-block-start: 1rem; border-top: 1px solid #cedbe8; }

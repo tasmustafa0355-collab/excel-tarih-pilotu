@@ -25,6 +25,10 @@ let busy = false;
 let transferable = false;
 let revision = 0;
 const clearedCells = new Set();
+const discardedCells = new Map();
+const piecesFormat = new Intl.NumberFormat("tr-TR");
+let detailsTimer;
+let detailsRead = Promise.resolve();
 const isStandalone = window.self === window.top;
 
 if (isStandalone) {
@@ -97,11 +101,13 @@ async function showChange(event, sheetId, sheetName) {
     await Excel.run(async (context) => {
       const sheet = context.workbook.worksheets.getItem(sheetId);
       const ranges = columns.map((column) => sheet.getRange(`${column}${firstRow}:${column}${lastRow}`).load(["values", "text"]));
+      const pieces = sheet.getRange(`K${firstRow}:K${lastRow}`).load("values");
       await context.sync();
       for (const [index, range] of ranges.entries()) {
         const column = columns[index];
         range.values.forEach(([value], offset) => updateDateEntry(
-          column + (Number(firstRow) + offset), dateColumns[column], value, range.text[offset][0], sheetName,
+          column + (Number(firstRow) + offset), dateColumns[column], value, range.text[offset][0],
+          readPieces(pieces.values[offset][0]), sheetId, sheetName,
         ));
       }
     });
@@ -110,13 +116,15 @@ async function showChange(event, sheetId, sheetName) {
   }
 }
 
-function updateDateEntry(cell, label, value, displayed, sheetName) {
+function updateDateEntry(cell, label, value, displayed, pieces, sheetId, sheetName) {
+  if (discardedCells.has(cell) && discardedCells.get(cell) === value) return;
+  const wasDiscarded = discardedCells.delete(cell);
   const existingItem = entries.querySelector(`[data-cell="${cell}"]`);
   if (value === "" || value === null) {
-    if (existingItem) {
-      existingItem.remove();
+    if (existingItem || wasDiscarded) {
+      existingItem?.remove();
       clearedCells.add(cell);
-      noteQueueChange();
+      noteQueueChange(sheetId);
       statusMessage.textContent = `${sheetName} izleniyor. ${cell} panelden kaldırıldı.`;
     }
     return;
@@ -126,36 +134,107 @@ function updateDateEntry(cell, label, value, displayed, sheetName) {
   const numericDate = typeof value === "number" && Number.isFinite(value) && value > 0 &&
     /^\s*\d{1,4}([./-])\d{1,2}\1\d{1,4}(?:[\sT]|$)/.test(displayed);
   if (!dateText && !numericDate) {
-    if (existingItem) {
-      existingItem.remove();
+    if (existingItem || wasDiscarded) {
+      existingItem?.remove();
       clearedCells.add(cell);
-      noteQueueChange();
+      noteQueueChange(sheetId);
     }
     statusMessage.textContent = cell + " değişti. Tarihi GG.AA.YYYY SS:DD biçiminde gir.";
     return;
   }
   const entryText = cell + " · " + label + " · " + (dateText || displayed);
-  if (existingItem?.textContent === entryText) return;
-
   statusMessage.textContent = sheetName + " izleniyor. Tarih yakalandı.";
   const item = existingItem ?? document.createElement("li");
   item.dataset.cell = cell;
-  item.textContent = entryText;
+  const text = document.createElement("div");
+  const title = document.createElement("span");
+  const details = document.createElement("small");
+  details.className = "entry-details";
+  title.textContent = entryText;
+  details.textContent = displayPieces(pieces) + (transferable ? " · Birleşim kontrol ediliyor…" : "");
+  text.append(title, details);
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "remove-entry";
+  remove.textContent = "🗑";
+  remove.title = cell + " kaydını gönderim listesinden çıkar";
+  remove.setAttribute("aria-label", remove.title);
+  remove.addEventListener("click", () => {
+    if (busy || item.parentElement !== entries) return;
+    discardedCells.set(cell, value);
+    item.remove();
+    statusMessage.textContent = cell + " gönderim listesinden çıkarıldı.";
+    noteQueueChange(sheetId);
+  });
+  item.replaceChildren(text, remove);
   entries.prepend(item);
   clearedCells.delete(cell);
-  noteQueueChange();
+  noteQueueChange(sheetId);
 }
 
-function noteQueueChange() {
+function displayPieces(pieces) {
+  return Number.isSafeInteger(pieces) && pieces >= 0 ? piecesFormat.format(pieces) + " adet" : "K sütununda geçerli adet yok";
+}
+
+function noteQueueChange(sheetId) {
   revision++;
   if (!busy) report.hidden = true;
   updateTransferButtons();
+  scheduleQueueDetails(sheetId);
 }
 
 function updateTransferButtons() {
   const count = entries.children.length;
   pendingCount.textContent = String(count);
   previewButton.disabled = sendButton.disabled = busy || !transferable || !count;
+  for (const item of entries.children) item.querySelector(".remove-entry").disabled = busy;
+}
+
+function scheduleQueueDetails(sheetId) {
+  window.clearTimeout(detailsTimer);
+  if (busy || !transferable || !entries.children.length) return;
+  const version = revision;
+  detailsTimer = window.setTimeout(() => {
+    detailsRead = detailsRead.then(() => refreshQueueDetails(sheetId, version));
+  }, 300);
+}
+
+async function refreshQueueDetails(sheetId, version) {
+  if (busy || version !== revision) return;
+  try {
+    const cells = [...entries.children].map((item) => item.dataset.cell);
+    if (!Office.context.requirements.isSetSupported("ExcelApi", "1.10")) {
+      throw new Error("Bu Excel ortamında B sütunu yorumları okunamıyor.");
+    }
+    const prepared = await prepareExcelBatch(sheetId, cells, [...clearedCells], [...discardedCells.keys()]);
+    if (version === revision) showQueueDetails(prepared);
+  } catch (error) {
+    if (version !== revision) return;
+    for (const item of entries.children) {
+      item.querySelector(".entry-details").textContent = "Adet ve birleşim kontrolü yapılamadı.";
+    }
+    statusMessage.textContent = error.message;
+  }
+}
+
+function showQueueDetails(prepared) {
+  const lines = new Map(prepared.preview.map((line) => [line[0].split(" / ").at(-1), line]));
+  const totals = new Map();
+  for (const row of prepared.rows) {
+    if (!row.mergeMembers) continue;
+    for (const member of row.mergeMembers) totals.set(MODE_SETTINGS[row.mode].column + member.row, row.pieces);
+  }
+  for (const item of entries.children) {
+    const cell = item.dataset.cell;
+    const line = lines.get(cell);
+    const note = prepared.reasons.find((reason) => reason.startsWith(cell + " · "));
+    const details = item.querySelector(".entry-details");
+    if (totals.has(cell)) details.textContent = "Birleşim · " + displayPieces(totals.get(cell));
+    else if (line?.[6]) details.textContent = displayPieces(line[4]) + " · " + line[6];
+    else if (note) details.textContent = note;
+    else if (line) details.textContent = displayPieces(line[4]);
+    else details.textContent = "Tarih tekrar kontrol edilmeli.";
+  }
 }
 
 async function submitBatch(sheetId, action) {
@@ -166,6 +245,8 @@ async function submitBatch(sheetId, action) {
   reportRows.replaceChildren();
   reportStatus.textContent = "Excel'deki son değerler kontrol ediliyor…";
   try {
+    window.clearTimeout(detailsTimer);
+    await detailsRead;
     if (!Office.context.requirements.isSetSupported("ExcelApi", "1.10")) {
       throw new Error("Bu Excel ortamında B sütunundaki açıklamalar okunamıyor.");
     }
@@ -177,7 +258,7 @@ async function submitBatch(sheetId, action) {
     const cells = [...entries.children].map((item) => item.dataset.cell);
     if (!cells.length) throw new Error("Bekleyen tarih yok.");
     const snapshot = revision;
-    const prepared = await prepareExcelBatch(sheetId, cells, [...clearedCells]);
+    const prepared = await prepareExcelBatch(sheetId, cells, [...clearedCells], [...discardedCells.keys()]);
     await pendingChange;
     if (snapshot !== revision) throw new Error("Hazırlık sırasında tarihler değişti. İşlemi tekrar başlat.");
     for (const cell of prepared.missing) {
@@ -185,6 +266,7 @@ async function submitBatch(sheetId, action) {
       clearedCells.add(cell);
     }
     for (const reason of prepared.reasons) addReportLine(reason);
+    showQueueDetails(prepared);
     const rows = prepared.rows;
     if (!rows.length) throw new Error("Aktarılabilecek geçerli satır bulunamadı.");
 
@@ -222,6 +304,7 @@ async function submitBatch(sheetId, action) {
   } finally {
     busy = false;
     updateTransferButtons();
+    scheduleQueueDetails(sheetId);
   }
 }
 
