@@ -33,13 +33,17 @@ if (isStandalone) {
         const sheet = context.workbook.worksheets.getActiveWorksheet();
         sheet.load(["id", "name"]);
         await context.sync();
-        if (!/^(sheet|sayfa)[23]$/i.test(sheet.name)) {
-          statusMessage.textContent = "Sheet2 veya Sheet3'e geçip paneli kapatıp yeniden aç.";
+        if (!/^(sheet|sayfa)[123]$/i.test(sheet.name)) {
+          statusMessage.textContent = "Sheet1, Sheet2 veya Sheet3'e geçip paneli yeniden aç.";
           return;
         }
         const sheetId = sheet.id;
         const sheetName = sheet.name;
-        sheet.onChanged.add((event) => showChange(event, sheetId, sheetName));
+        let pendingChange = Promise.resolve();
+        sheet.onChanged.add((event) => {
+          pendingChange = pendingChange.then(() => showChange(event, sheetId, sheetName));
+          return pendingChange;
+        });
         await context.sync();
         statusMessage.textContent = sheetName + " izleniyor.";
       });
@@ -59,8 +63,9 @@ async function showChange(event, sheetId, sheetName) {
   const label = dateColumns[column];
 
   try {
+    const existingItem = entries.querySelector(`[data-cell="${cell}"]`);
     const detail = event.details;
-    if (detail && detail.valueBefore === detail.valueAfter) return;
+    if (!existingItem && detail && detail.valueBefore === detail.valueAfter) return;
 
     await Excel.run(async (context) => {
       const range = context.workbook.worksheets.getItem(sheetId).getRange(cell);
@@ -68,18 +73,29 @@ async function showChange(event, sheetId, sheetName) {
       await context.sync();
       const value = range.values[0][0];
       const displayed = range.text[0][0];
-      if (value === "") return;
+      if (value === "" || value === null) {
+        if (existingItem) {
+          existingItem.remove();
+          statusMessage.textContent = `${sheetName} izleniyor. ${cell} panelden kaldırıldı.`;
+        }
+        return;
+      }
 
       const dateText = typeof value === "string" ? validTextDate(value) : "";
       const numericDate = typeof value === "number" && Number.isFinite(value) && value > 0 &&
         /^\s*\d{1,4}([./-])\d{1,2}\1\d{1,4}(?:[\sT]|$)/.test(displayed);
       if (!dateText && !numericDate) {
+        existingItem?.remove();
         statusMessage.textContent = cell + " değişti. Tarihi GG.AA.YYYY SS:DD biçiminde gir.";
         return;
       }
+      const entryText = cell + " · " + label + " · " + (dateText || displayed);
+      if (existingItem?.textContent === entryText) return;
+
       statusMessage.textContent = sheetName + " izleniyor. Tarih yakalandı.";
-      const item = document.createElement("li");
-      item.textContent = cell + " · " + label + " · " + (dateText || displayed);
+      const item = existingItem ?? document.createElement("li");
+      item.dataset.cell = cell;
+      item.textContent = entryText;
       entries.prepend(item);
       if (entries.children.length > 15) entries.lastElementChild.remove();
     });
