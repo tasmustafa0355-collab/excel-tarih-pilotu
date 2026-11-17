@@ -4,16 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bestseller Excel Tarih Pilotu</title>
-  <link rel="stylesheet" href="panel.css?v=2.1.0">
+  <link rel="stylesheet" href="panel.css?v=2.2.0">
   <script defer src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script defer src="excel-transfer-rules.js?v=2.1.1"></script>
-  <script defer src="excel-batch.js?v=2.1.0"></script>
-  <script defer src="panel.js?v=2.1.0"></script>
+  <script defer src="excel-batch.js?v=2.2.0"></script>
+  <script defer src="auto-sync.js?v=2.2.0"></script>
+  <script defer src="panel.js?v=2.2.0"></script>
   <script defer src="manifest-download.js"></script>
 </head>
 <body>
   <main>
-    <h1>Bestseller tarih testi</h1>
+    <h1>Bestseller tarih aktarımı</h1>
     <p id="status" role="status">Excel bağlantısı bekleniyor…</p>
     <section id="transfer" hidden>
       <h2>Bekleyen tarihler <span id="pending-count">0</span></h2>
@@ -22,7 +23,9 @@
       <div class="actions">
         <button id="preview" type="button" disabled>Önizleme</button>
         <button id="send" type="button" disabled>Gönder</button>
+        <button id="auto-sync" type="button" aria-pressed="false" disabled>Otomatik aktarımı aç</button>
       </div>
+      <p id="sync-status" role="status" hidden></p>
       <section id="report" hidden>
         <h2>Sonuç</h2>
         <p id="report-status" role="status"></p>

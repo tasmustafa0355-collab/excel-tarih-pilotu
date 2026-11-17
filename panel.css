@@ -21,8 +21,11 @@ button {
   cursor: pointer;
 }
 h2 { font-size: 1rem; }
-.actions { display: flex; gap: .5rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 #preview { background: #245d82; }
+#auto-sync { background: #245d82; }
+#auto-sync[aria-pressed="true"] { background: #8a4220; }
+#sync-status { font-size: .875rem; color: #36526a; }
 button:disabled { opacity: .5; cursor: default; }
 #events { max-height: 16rem; overflow: auto; }
 #events li { display: flex; align-items: start; justify-content: space-between; gap: .5rem; }

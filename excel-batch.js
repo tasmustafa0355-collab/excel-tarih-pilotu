@@ -104,6 +104,30 @@ function collectReadRows(rows, first, range) {
   range.values.forEach((values,i) => rows.set(first + i, {values, texts:range.text[i]}));
 }
 
+async function readExcelSyncSources(sheetId, cells) {
+  return Excel.run(async (context) => {
+    const sheet = context.workbook.worksheets.getItem(sheetId);
+    const byRow = new Map();
+    const rowNumbers = [...new Set(cells.map(cell => Number(cell.slice(1))))].sort((a,b) => a-b);
+    const parts = groupNearbyRows(rowNumbers)
+      .map(rows => ({first:rows[0],range:sheet.getRange(`A${rows[0]}:Z${rows.at(-1)}`).load(["values","text"])}));
+    await context.sync();
+    for (const part of parts) collectReadRows(byRow,part.first,part.range);
+    return cells.map(cell => {
+      const {values,texts} = byRow.get(Number(cell.slice(1)));
+      const mode = columnModes[cell[0]];
+      const {index} = MODE_SETTINGS[mode];
+      const value = values[index];
+      const pieces = readPieces(values[10]);
+      return {
+        cell, shipment:texts[0].trim()+texts[1].trim(), note:texts[2].trim(), file:texts[4].trim(),
+        pieces:Number.isSafeInteger(pieces) ? pieces : null,
+        date:value === "" || value == null ? null : parseDate(value,texts[index],mode) || "invalid",
+      };
+    });
+  });
+}
+
 function makeMergeSource(rows, first, last, links) {
   return {
     getComments: () => links.map(({comment,range}) => ({

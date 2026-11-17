@@ -73,6 +73,10 @@ if (isStandalone) {
         sendButton.addEventListener("click", (event) => {
           if (event.isTrusted) submitBatch(sheetId, "send");
         });
+        autoButton.addEventListener("click", (event) => {
+          if (event.isTrusted) toggleAutomaticTransfer(sheetId);
+        });
+        updateTransferButtons();
         statusMessage.textContent = sheetName + " izleniyor.";
       });
     } catch (error) {
@@ -117,7 +121,8 @@ async function showChange(event, sheetId, sheetName) {
 }
 
 function updateDateEntry(cell, label, value, displayed, pieces, sheetId, sheetName) {
-  if (discardedCells.has(cell) && discardedCells.get(cell) === value) return;
+  trackAutomaticDate(cell,sheetId);
+  if (!automaticScope && discardedCells.has(cell) && discardedCells.get(cell) === value) return;
   const wasDiscarded = discardedCells.delete(cell);
   const existingItem = entries.querySelector(`[data-cell="${cell}"]`);
   if (value === "" || value === null) {
@@ -178,7 +183,7 @@ function displayPieces(pieces) {
 
 function noteQueueChange(sheetId) {
   revision++;
-  if (!busy) report.hidden = true;
+  if (!busy && !automaticScope) report.hidden = true;
   updateTransferButtons();
   scheduleQueueDetails(sheetId);
 }
@@ -186,8 +191,9 @@ function noteQueueChange(sheetId) {
 function updateTransferButtons() {
   const count = entries.children.length;
   pendingCount.textContent = String(count);
-  previewButton.disabled = sendButton.disabled = busy || !transferable || !count;
-  for (const item of entries.children) item.querySelector(".remove-entry").disabled = busy;
+  previewButton.disabled = sendButton.disabled = busy || !transferable || !count || Boolean(automaticScope);
+  autoButton.disabled = changingAuto || !transferable || (busy && !automaticScope);
+  for (const item of entries.children) item.querySelector(".remove-entry").disabled = busy || Boolean(automaticScope);
 }
 
 function scheduleQueueDetails(sheetId) {
@@ -238,7 +244,7 @@ function showQueueDetails(prepared) {
 }
 
 async function submitBatch(sheetId, action) {
-  if (busy || !transferable) return;
+  if (busy || !transferable || automaticScope) return;
   busy = true;
   updateTransferButtons();
   report.hidden = false;
@@ -325,12 +331,13 @@ function askExtension(batch, action) {
       window.removeEventListener("message", receive);
       resolve(data.response);
     };
+    const short = action === "connect" || action.startsWith("sync-");
     const timer = window.setTimeout(() => {
       window.removeEventListener("message", receive);
-      resolve({error:action === "connect"
-        ? "Chrome uzantısını yükle ve Excel sekmesini yenile."
+      resolve({error:short
+        ? "Güncel Chrome uzantısını yükle ve Excel sekmesini yenile."
         : "Chrome uzantısından yanıt gelmedi. Sonucu Bestseller panelinde kontrol et."});
-    }, action === "connect" ? 3000 : 240000);
+    }, short ? 5000 : 240000);
     window.addEventListener("message", receive);
     window.postMessage({channel, type:"request", requestId, batch, action}, location.origin);
   });
