@@ -31,33 +31,39 @@ async function toggleAutomaticTransfer(sheetId) {
   updateTransferButtons();
   try {
     if (automaticScope) {
-      const scope = automaticScope;
-      automaticScope = "";
-      automaticCells.clear();
-      autoVersion++;
-      window.clearTimeout(autoTimer);
-      autoButton.setAttribute("aria-pressed","false");
-      autoButton.textContent = "Otomatik aktarımı aç";
-      autoStatus.textContent = "Otomatik aktarım kapalı.";
-      await askExtension({scope},"sync-disable");
+      stopAutomaticTransfer("Otomatik aktarım kapalı.");
+      closeLiveConnection();
       return;
     }
     if (!Office.context.requirements.isSetSupported("ExcelApi","1.10")) {
       throw new Error("Bu Excel ortamında birleşim yorumları okunamıyor.");
     }
-    const scope = await workbookSyncScope(sheetId);
-    const response = await askExtension({scope},"sync-enable");
+    autoStatus.textContent = "Bağlantı penceresindeki adımları tamamla.";
+    const [scope] = await Promise.all([workbookSyncScope(sheetId),openLiveConnection()]);
+    const response = await askLiveBestseller({scope},"sync-enable");
     if (!response?.enabled) throw new Error(response?.error || "Otomatik aktarım açılamadı.");
     automaticScope = scope;
     autoButton.setAttribute("aria-pressed","true");
     autoButton.textContent = "Otomatik aktarımı kapat";
     autoStatus.textContent = "Otomatik aktarım açık. Bundan sonraki tarih girişleri ve silmeler izleniyor.";
   } catch (error) {
+    closeLiveConnection();
     autoStatus.textContent = error.message;
   } finally {
     changingAuto = false;
     updateTransferButtons();
   }
+}
+
+function stopAutomaticTransfer(message) {
+  automaticScope = "";
+  automaticCells.clear();
+  autoVersion++;
+  window.clearTimeout(autoTimer);
+  autoButton.setAttribute("aria-pressed","false");
+  autoButton.textContent = "Bestseller’a bağlan";
+  autoStatus.textContent = message;
+  updateTransferButtons();
 }
 
 function trackAutomaticDate(cell,sheetId) {
@@ -115,7 +121,7 @@ async function transferAutomaticDates(sheetId) {
     if (scope !== automaticScope) return;
     version = autoVersion;
     cells = [...automaticCells];
-    const tracked = await askExtension({scope,cells},"sync-inspect");
+    const tracked = await askLiveBestseller({scope,cells},"sync-inspect");
     if (!Array.isArray(tracked?.groups)) throw new Error(tracked?.error || "Otomatik kayıtlar okunamadı.");
     const {actions,reasons} = await prepareAutomaticDates(sheetId,cells,tracked.groups);
     await pendingChange;
@@ -125,7 +131,7 @@ async function transferAutomaticDates(sheetId) {
     for (const operation of actions) {
       if (scope !== automaticScope || version !== autoVersion) break;
       for (const cell of operation.changed) automaticCells.delete(cell);
-      const result = await askExtension({scope,...operation},"sync");
+      const result = await askLiveBestseller({scope,...operation},"sync");
       const label = {
         added:"Eklendi",updated:"Güncellendi",cleared:"Silindi",unchanged:"Güncel",retained:"Korundu",
         existing:"Zaten var",ignored:"İşlem yok",error:"Kontrol gerekli",

@@ -13,13 +13,10 @@ const entries = document.querySelector("#events");
 const setup = document.querySelector("#setup");
 const transferSection = document.querySelector("#transfer");
 const instructions = document.querySelector("#instructions");
-const previewButton = document.querySelector("#preview");
-const sendButton = document.querySelector("#send");
 const pendingCount = document.querySelector("#pending-count");
 const report = document.querySelector("#report");
 const reportStatus = document.querySelector("#report-status");
 const reportRows = document.querySelector("#report-rows");
-const channel = "bestseller-excel-panel-v1";
 let pendingChange = Promise.resolve();
 let busy = false;
 let transferable = false;
@@ -67,12 +64,6 @@ if (isStandalone) {
         if (!transferable) {
           instructions.textContent = "Burası tarih algılama testi için. Aktarım için Sheet1'de paneli yeniden aç.";
         }
-        previewButton.addEventListener("click", (event) => {
-          if (event.isTrusted) submitBatch(sheetId, "preview");
-        });
-        sendButton.addEventListener("click", (event) => {
-          if (event.isTrusted) submitBatch(sheetId, "send");
-        });
         autoButton.addEventListener("click", (event) => {
           if (event.isTrusted) toggleAutomaticTransfer(sheetId);
         });
@@ -191,7 +182,6 @@ function noteQueueChange(sheetId) {
 function updateTransferButtons() {
   const count = entries.children.length;
   pendingCount.textContent = String(count);
-  previewButton.disabled = sendButton.disabled = busy || !transferable || !count || Boolean(automaticScope);
   autoButton.disabled = changingAuto || !transferable || (busy && !automaticScope);
   for (const item of entries.children) item.querySelector(".remove-entry").disabled = busy || Boolean(automaticScope);
 }
@@ -243,104 +233,10 @@ function showQueueDetails(prepared) {
   }
 }
 
-async function submitBatch(sheetId, action) {
-  if (busy || !transferable || automaticScope) return;
-  busy = true;
-  updateTransferButtons();
-  report.hidden = false;
-  reportRows.replaceChildren();
-  reportStatus.textContent = "Excel'deki son değerler kontrol ediliyor…";
-  try {
-    window.clearTimeout(detailsTimer);
-    await detailsRead;
-    if (!Office.context.requirements.isSetSupported("ExcelApi", "1.10")) {
-      throw new Error("Bu Excel ortamında B sütunundaki açıklamalar okunamıyor.");
-    }
-    await pendingChange;
-    if (!entries.children.length) throw new Error("Bekleyen tarih yok.");
-    const connection = await askExtension(null, "connect");
-    if (!connection.connected) throw new Error(connection.error || "Chrome uzantısı bağlanamadı.");
-    await pendingChange;
-    const cells = [...entries.children].map((item) => item.dataset.cell);
-    if (!cells.length) throw new Error("Bekleyen tarih yok.");
-    const snapshot = revision;
-    const prepared = await prepareExcelBatch(sheetId, cells, [...clearedCells], [...discardedCells.keys()]);
-    await pendingChange;
-    if (snapshot !== revision) throw new Error("Hazırlık sırasında tarihler değişti. İşlemi tekrar başlat.");
-    for (const cell of prepared.missing) {
-      entries.querySelector(`[data-cell="${cell}"]`)?.remove();
-      clearedCells.add(cell);
-    }
-    for (const reason of prepared.reasons) addReportLine(reason);
-    showQueueDetails(prepared);
-    const rows = prepared.rows;
-    if (!rows.length) throw new Error("Aktarılabilecek geçerli satır bulunamadı.");
-
-    const batch = {protocol:rows.some((row) => row.mergeMembers) ? "bestseller-sheet2-v2" : "bestseller-sheet2-v1",
-      id:crypto.randomUUID(), mode:"all", rows};
-    reportStatus.textContent = action === "preview"
-      ? "Bestseller eşleşmeleri kontrol ediliyor…"
-      : "Bestseller gönderim onayını bekliyor. Gerekirse Bestseller sekmesine geç.";
-    const reply = await askExtension(batch, action);
-    if (reply.error) throw new Error(reply.error);
-    reportStatus.textContent = reply.summary;
-    for (const result of reply.results ?? []) {
-      const mode = MODE_SETTINGS[result.mode];
-      const label = {
-        preview:"Hazır", added:"Gönderildi", existing:"Zaten var", skipped:"Tekrar",
-        mismatch:"Adet uyuşmuyor", error:"Kontrol gerekli",
-      }[result.status] ?? result.status;
-      addReportLine(`${mode.column}${result.row} · ${result.shipment} / ${result.file} · ${label} · ${result.info}`);
-    }
-    if (action === "send" && snapshot === revision) {
-      const selectedCells = new Set(cells);
-      for (const result of reply.results ?? []) {
-        if (!["added", "existing", "skipped"].includes(result.status)) continue;
-        const row = rows.find((item) => item.row === result.row && item.mode === result.mode);
-        if (!row) continue;
-        const members = row.mergeMembers ?? [row];
-        for (const member of members) {
-          const cell = MODE_SETTINGS[row.mode].column + member.row;
-          if (selectedCells.has(cell)) entries.querySelector(`[data-cell="${cell}"]`)?.remove();
-        }
-      }
-    }
-  } catch (error) {
-    reportStatus.textContent = error.message;
-  } finally {
-    busy = false;
-    updateTransferButtons();
-    scheduleQueueDetails(sheetId);
-  }
-}
-
 function addReportLine(text) {
   const line = document.createElement("li");
   line.textContent = text;
   reportRows.append(line);
-}
-
-function askExtension(batch, action) {
-  const requestId = crypto.randomUUID();
-  return new Promise((resolve) => {
-    const receive = (event) => {
-      const data = event.data;
-      if (event.source !== window || event.origin !== location.origin ||
-          data?.channel !== channel || data.type !== "response" || data.requestId !== requestId) return;
-      window.clearTimeout(timer);
-      window.removeEventListener("message", receive);
-      resolve(data.response);
-    };
-    const short = action === "connect" || action.startsWith("sync-");
-    const timer = window.setTimeout(() => {
-      window.removeEventListener("message", receive);
-      resolve({error:short
-        ? "Güncel Chrome uzantısını yükle ve Excel sekmesini yenile."
-        : "Chrome uzantısından yanıt gelmedi. Sonucu Bestseller panelinde kontrol et."});
-    }, short ? 5000 : 240000);
-    window.addEventListener("message", receive);
-    window.postMessage({channel, type:"request", requestId, batch, action}, location.origin);
-  });
 }
 
 function validTextDate(value) {

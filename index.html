@@ -4,12 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bestseller Excel Tarih Pilotu</title>
-  <link rel="stylesheet" href="panel.css?v=2.2.0">
+  <link rel="stylesheet" href="panel.css?v=2.3.0">
   <script defer src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script defer src="excel-transfer-rules.js?v=2.1.1"></script>
   <script defer src="excel-batch.js?v=2.2.0"></script>
-  <script defer src="auto-sync.js?v=2.2.0"></script>
-  <script defer src="panel.js?v=2.2.0"></script>
+  <script defer src="live-transport.js?v=2.3.0"></script>
+  <script defer src="auto-sync.js?v=2.3.0"></script>
+  <script defer src="panel.js?v=2.3.0"></script>
   <script defer src="manifest-download.js"></script>
 </head>
 <body>
@@ -18,12 +19,10 @@
     <p id="status" role="status">Excel bağlantısı bekleniyor…</p>
     <section id="transfer" hidden>
       <h2>Bekleyen tarihler <span id="pending-count">0</span></h2>
-      <p id="instructions">P, R, U, X veya Z sütununa tarih gir. Paneli kapatmadan önce aktarımı tamamla.</p>
+      <p id="instructions">Bağlantıyı açtıktan sonra P, R, U, X veya Z sütununa tarih gir.</p>
       <ul id="events" aria-label="Bekleyen tarihler"></ul>
       <div class="actions">
-        <button id="preview" type="button" disabled>Önizleme</button>
-        <button id="send" type="button" disabled>Gönder</button>
-        <button id="auto-sync" type="button" aria-pressed="false" disabled>Otomatik aktarımı aç</button>
+        <button id="auto-sync" type="button" aria-pressed="false" disabled>Bestseller’a bağlan</button>
       </div>
       <p id="sync-status" role="status" hidden></p>
       <section id="report" hidden>
