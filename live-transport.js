@@ -12,7 +12,7 @@ function openLiveConnection() {
     state.wait = window.setTimeout(() => {
       failLiveConnection(state,"Bestseller bağlantısı zaman aşımına uğradı.");
     },180000);
-    const url = new URL("bestseller-connection.html",location.href);
+    const url = new URL("bestseller-connection.html?v=2.3.1",location.href);
     Office.context.ui.displayDialogAsync(url.href,{height:35,width:32,displayInIframe:false},result => {
       if (liveConnection !== state) {
         if (result.status === Office.AsyncResultStatus.Succeeded) result.value.close();

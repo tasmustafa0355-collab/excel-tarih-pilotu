@@ -1,6 +1,7 @@
 "use strict";
 
 const origin = "https://bestseller.ist";
+const shipmentList = origin + "/#/logistic/shipment-list";
 const channel = "bestseller-live-workbook-v1";
 const statusMessage = document.querySelector("#connection-status");
 const openButton = document.querySelector("#open-bestseller");
@@ -48,14 +49,14 @@ openButton.addEventListener("click",event => {
     site.focus();
     return;
   }
-  site = window.open(origin + "/","_blank");
+  site = window.open(shipmentList,"_blank");
   if (!site) {
     loseConnection("Açılır pencere engellendi. Tarayıcı Bestseller sekmesini açamadı.");
     return;
   }
   waitingSince = Date.now();
   lastPong = 0;
-  statusMessage.textContent = "Bestseller’da oturum aç ve otomatik aktarım yer işaretine tıkla.";
+  statusMessage.textContent = "Bestseller’da yer işaretine tıkla ve Oturumu algıla düğmesine bas.";
 });
 
 window.addEventListener("message",event => {
@@ -68,7 +69,7 @@ window.addEventListener("message",event => {
       statusMessage.textContent = "Bağlantı hazır. Excel’e dön. Bu pencereyi ve Bestseller sekmesini açık bırak.";
       toExcel({type:"ready"});
     } else if (data.ready !== true) {
-      loseConnection("Bestseller oturumu bekleniyor. Sitede bir sevkiyat aç.");
+      loseConnection("Bestseller’da Oturumu algıla düğmesine bas. Gerekirse bir sevkiyat aç.");
     }
   } else if (data.type === "disconnected") {
     loseConnection("Bestseller sayfası kapandı veya yenilendi. Excel’den yeniden bağlan.");
