@@ -334,7 +334,7 @@ function parseMergeLink(content) {
   const explicit = directed && /^[a-z]{1,20}[\s-]*\d{1,12}(?:\s*[/–—-]?\s*[\p{L}\p{N}][\p{L}\p{N}\s.\-–—]*)?$/iu.test(directed[1]);
   const target = explicit && directed ? directed[1].replace(/^([a-z]+[\s-]*\d+)\s*\/\s*/i, "$1") : note.replace(/\.$/, "");
   const normalized = fileRefKey(target).replace(/ı/g, "i");
-  const targetSuffix = normalized.endsWith("-denetim") ? "-DENETİM" : normalized.endsWith("-kimyahane") ? "-Kimyahane" : "";
+  const targetSuffix = /[ -]denetim$/.test(normalized) ? "-DENETİM" : /[ -]kimyahane$/.test(normalized) ? "-Kimyahane" : "";
   const key = mergeTitleKey(target);
   const shipmentOnly = /^[a-z]{1,20}\d{1,12}$/i.test(key);
   if (explicit || shipmentOnly) return {key, shipmentOnly, targetSuffix};
